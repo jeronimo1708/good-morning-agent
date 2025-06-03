@@ -1,11 +1,13 @@
 import requests
 from PIL import Image, ImageDraw, ImageFont
 import os
-import pywhatkit
 import schedule
 import time
 from dotenv import load_dotenv
 import random # For choosing different image search terms
+import telegram
+from telegram.error import TelegramError
+import asyncio
 
 
 #TODO:
@@ -13,28 +15,24 @@ import random # For choosing different image search terms
 # 2. Replace whatsapp with telegram bots.
 load_dotenv()
 # --- Configuration ---
-# Get your Unsplash Access Key from https://unsplash.com/developers
-# It's best to store this as an environment variable for security,
-# but for simplicity, you can paste it directly here.
-# Example: UNSPLASH_ACCESS_KEY = "YOUR_UNSPLASH_ACCESS_KEY_HERE"
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
 WHATSAPP_RECIPIENT_NUMBER = os.getenv("WHATSAPP_RECIPIENT_NUMBER")
-# Your parents' WhatsApp number (with country code, no + or spaces)
-# Example: WHATSAPP_RECIPIENT_NUMBER = "919876543210" # For India
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Time to send the message daily (24-hour format, HH:MM)
-SEND_TIME = "07:30" # Example: 7:30 AM
+SEND_TIME = os.getenv("SEND_TIME") # Example: 7:30 AM
 
 # Path to save temporary images
 TEMP_IMAGE_PATH = "good_morning_temp_image.png"
 FINAL_IMAGE_PATH = "final_good_morning_quote.png"
 
-# Font settings (you might need to adjust font path for your OS)
+# Font settings
 # Common paths for Arial:
 # Windows: "C:/Windows/Fonts/arial.ttf"
 # macOS: "/Library/Fonts/Arial.ttf" or "/System/Library/Fonts/Arial.ttf"
 # Linux: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" (or a similar path)
-# If you don't have a specific font, you can use Pillow's default:
+# This is Pillow's Pillow's default:
 # font = ImageFont.load_default()
 try:
     # Try a common path for Arial font
@@ -45,7 +43,6 @@ try:
         elif os.path.exists("/System/Library/Fonts/NewYork.ttf"):
             FONT_PATH = "/System/Library/Fonts/NewYork.ttf"
         else: # Fallback for Linux or if Arial is not found
-            # You might need to install 'fonts-dejavu-core' or similar for this
             FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 except Exception:
     FONT_PATH = None # Will fall back to default if path not found
@@ -234,27 +231,53 @@ def add_text_to_image(image_path, quote, author, output_path, good_morning_text=
     except Exception as e:
         print(f"Error processing image with text: {e}")
         return None
-
-def send_whatsapp_media(image_path, recipient_number, message_text=""):
-    """Sends the image as a WhatsApp message."""
+    
+# --- NEW: Function to send via Telegram ---
+async def send_telegram_media(image_path, chat_id, bot_token, message_text=""):
+    """Sends the image as a Telegram message."""
+    # print(f"DEBUG: Attempting to send image '{image_path}'")
+    # print(f"DEBUG: Using Chat ID: {chat_id}")
+    # print(f"DEBUG: Bot Token (first 5 chars): {bot_token[:5]}...")
+    # print(f"DEBUG: Caption: {message_text[:50]}...")
     try:
-        # For sending image with a caption:
-        # pywhatkit.sendwhats_image(phone_no=recipient_number, img_path=image_path, caption=message_text, wait_time=20)
-        # Note: pywhatkit often requires the browser to be open and WhatsApp Web to be logged in.
-        # It opens a new browser tab.
-        print(f"Attempting to send image to {recipient_number}...")
-        pywhatkit.sendwhats_image(
-            phone_no=recipient_number,
-            img_path=image_path,
-            caption=message_text,
-            wait_time=15,  # Time in seconds to wait for WhatsApp Web to load
-            tab_close=True # Close the tab after sending
-        )
-        print("WhatsApp message scheduled. Check your browser.")
-        time.sleep(5) # Give it a moment to process in case tab_close is too fast
+        bot = telegram.Bot(token=bot_token)
+        # We need to open the file in binary read mode ('rb') to send it.
+        with open(image_path, 'rb') as photo_file:
+            await bot.send_photo(chat_id=chat_id, photo=photo_file, caption=message_text)
+        print(f"Telegram message (image and caption) sent to chat ID {chat_id}.")
+    except TelegramError as e:
+        print(f"Failed to send Telegram message: {e}")
+        print("Please ensure your BOT_TOKEN and CHAT_ID are correct and your bot has been started by the recipient.")
+    except FileNotFoundError:
+        print(f"Error: Image file not found at {image_path} for Telegram.")
     except Exception as e:
-        print(f"Failed to send WhatsApp message: {e}")
-        print("Please ensure you are logged into WhatsApp Web in your default browser.")
+        print(f"An unexpected error occurred while sending Telegram message: {e}")
+
+# def send_whatsapp_media(image_path, recipient_number, message_text=""):
+#     """Sends the image as a WhatsApp message."""
+#     try:
+#         # Pywhatkit doesnt run headless on a server, it requires a browser to be open.
+#         # I want to run this on a server, so I will use Telegram instead.
+
+
+#         # For sending image with a caption:
+#         # pywhatkit.sendwhats_image(phone_no=recipient_number, img_path=image_path, caption=message_text, wait_time=20)
+#         # Note: pywhatkit often requires the browser to be open and WhatsApp Web to be logged in.
+#         # It opens a new browser tab.
+#         print(f"Attempting to send image to {recipient_number}...")
+        
+#         pywhatkit.sendwhats_image(
+#             phone_no=recipient_number,
+#             img_path=image_path,
+#             caption=message_text,
+#             wait_time=15,  # Time in seconds to wait for WhatsApp Web to load
+#             tab_close=True # Close the tab after sending
+#         )
+#         print("WhatsApp message scheduled. Check your browser.")
+#         time.sleep(5) # Give it a moment to process in case tab_close is too fast
+#     except Exception as e:
+#         print(f"Failed to send WhatsApp message: {e}")
+#         print("Please ensure you are logged into WhatsApp Web in your default browser.")
 
 
 def daily_good_morning_task():
@@ -274,12 +297,15 @@ def daily_good_morning_task():
         print("Could not download image. Aborting.")
         return
 
-    final_image = add_text_to_image(downloaded_img, quote_data['q'], quote_data['a'], FINAL_IMAGE_PATH, good_morning_text=good_morning_message)
+    final_image = add_text_to_image(downloaded_img, quote_data['q'], quote_data['a'], FINAL_IMAGE_PATH, good_morning_text="Good Morning!")
     if not final_image:
         print("Could not add text to image. Aborting.")
         return
 
-    send_whatsapp_media(final_image, WHATSAPP_RECIPIENT_NUMBER, message_text=full_message_caption)
+    # Call the new Telegram sending function
+    # send_telegram_media(final_image, TELEGRAM_CHAT_ID, TELEGRAM_BOT_TOKEN, message_text=full_message_caption)
+    # Call the new Telegram sending function using asyncio.run()
+    asyncio.run(send_telegram_media(final_image, TELEGRAM_CHAT_ID, TELEGRAM_BOT_TOKEN))
 
     # Clean up temporary files
     if os.path.exists(TEMP_IMAGE_PATH):
@@ -296,15 +322,15 @@ def daily_good_morning_task():
 
 # --- Scheduling the Task ---
 if __name__ == "__main__":
-    # For testing, you can uncomment this line to run it once immediately
-    daily_good_morning_task()
+    # For testing, we can uncomment this line to run it once immediately
+    # daily_good_morning_task()
 
     # Schedule the task to run every day at the specified time
-    # schedule.every().day.at(SEND_TIME).do(daily_good_morning_task)
-    # print(f"Script scheduled to send good morning messages every day at {SEND_TIME} to {os.environ.get('WHATSAPP_RECIPIENT_NUMBER')}.")
-    # print("Keep this script running in the background for it to work.")
-    # print("Press Ctrl+C to stop.")
+    schedule.every().day.at(SEND_TIME).do(daily_good_morning_task)
+    print(f"Script scheduled to send good morning messages every day at {SEND_TIME}.")
+    print("Keep this script running in the background for it to work.")
+    print("Press Ctrl+C to stop.")
 
-    # while True:
-    #     schedule.run_pending()
-    #     time.sleep(1) # Wait for 1 second before checking pending jobs again
+    while True:
+        schedule.run_pending()
+        time.sleep(1) # Wait for 1 second before checking pending jobs again

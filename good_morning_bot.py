@@ -52,7 +52,7 @@ except Exception:
 def get_quote():
     """Fetches a random quote from ZenQuotes API."""
     try:
-        response = requests.get("https://zenquotes.io/api/random")
+        response = requests.get(f"https://zenquotes.io/api/quotes/keyword=happiness")
         response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
         data = response.json()[0]
         return {
@@ -323,14 +323,14 @@ def daily_good_morning_task():
 # --- Scheduling the Task ---
 if __name__ == "__main__":
     # For testing, we can uncomment this line to run it once immediately
-    # daily_good_morning_task()
+    daily_good_morning_task()
 
     # Schedule the task to run every day at the specified time
-    schedule.every().day.at(SEND_TIME).do(daily_good_morning_task)
-    print(f"Script scheduled to send good morning messages every day at {SEND_TIME}.")
-    print("Keep this script running in the background for it to work.")
-    print("Press Ctrl+C to stop.")
+    # schedule.every().day.at(SEND_TIME).do(daily_good_morning_task)
+    # print(f"Script scheduled to send good morning messages every day at {SEND_TIME}.")
+    # print("Keep this script running in the background for it to work.")
+    # print("Press Ctrl+C to stop.")
 
-    while True:
-        schedule.run_pending()
-        time.sleep(1) # Wait for 1 second before checking pending jobs again
+    # while True:
+    #     schedule.run_pending()
+    #     time.sleep(1) # Wait for 1 second before checking pending jobs again
